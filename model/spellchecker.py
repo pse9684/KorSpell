@@ -37,7 +37,6 @@ def main():
     # 사용자 입력
     user_input = input("\n문장을 입력하세요:\n")
 
-    print("\nAzure Cognitive Search에서 문서 검색 중...\n")
     # 1) Azure Cognitive Search 호출
     search_results = search_azure_cognitive_search(
         user_input, azure_search_endpoint, azure_search_key, azure_search_index
@@ -64,8 +63,6 @@ def main():
         "temperature": 0.5,
         "max_tokens": 1000
     }
-
-    print("\nAzure OpenAI에 요청 중...\n")
 
     response = requests.post(url, headers=headers, json=body)
 
