@@ -1,76 +1,79 @@
 import os
 import json
+import requests
 from dotenv import load_dotenv
 
-# Add OpenAI import
-from openai import AzureOpenAI
+def search_azure_cognitive_search(query, endpoint, key, index):
+    search_url = f"{endpoint}/indexes/{index}/docs/search?api-version=2021-04-30-Preview"
+    headers = {
+        "api-key": key,
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "search": query,
+        #"top": 3,           # 상위 3개 문서 검색, 필요시 조정
+        "queryType": "simple"
+    }
 
-def main(): 
-        
-    try:
-        # Flag to show citations
-        show_citations = False
+    response = requests.post(search_url, headers=headers, json=payload)
+    response.raise_for_status()
+    return response.json()
 
-        # Get configuration settings 
-        load_dotenv()
-        azure_oai_endpoint = os.getenv("AZURE_OAI_ENDPOINT")
-        azure_oai_key = os.getenv("AZURE_OAI_KEY")
-        azure_oai_deployment = os.getenv("AZURE_OAI_DEPLOYMENT")
-        azure_search_endpoint = os.getenv("AZURE_SEARCH_ENDPOINT")
-        azure_search_key = os.getenv("AZURE_SEARCH_KEY")
-        azure_search_index = os.getenv("AZURE_SEARCH_INDEX")
+def main():
+    load_dotenv()
 
-        # Load system prompt from file
-        with open("model/system.txt", "r", encoding="utf-8") as f:
-            system_prompt = f.read()
-        
-        # Initialize the Azure OpenAI client
-        client = AzureOpenAI(
-            base_url=f"{azure_oai_endpoint}/openai/deployments/{azure_oai_deployment}",
-            api_key=azure_oai_key,
-            api_version="2023-09-01-preview")
+    # 환경변수 로드
+    azure_oai_endpoint = os.getenv("AZURE_OAI_ENDPOINT")
+    azure_oai_key = os.getenv("AZURE_OAI_KEY")
+    azure_oai_deployment = os.getenv("AZURE_OAI_DEPLOYMENT")
+    azure_search_endpoint = os.getenv("AZURE_SEARCH_ENDPOINT")
+    azure_search_key = os.getenv("AZURE_SEARCH_KEY")
+    azure_search_index = os.getenv("AZURE_SEARCH_INDEX")
 
-        # Get the prompt
-        text = input('\n문장을 입력하세요: \n')
+    # system prompt 불러오기
+    with open("model/system.txt", "r", encoding="utf-8") as f:
+        system_prompt = f.read()
 
-        # Configure your data source
-        extension_config = dict(dataSources = [
-            {
-                "type": "AzureCognitiveSearch",
-                "parameters": {
-                    "endpoint": azure_search_endpoint,
-                    "key": azure_search_key,
-                    "indexName": azure_search_index
-                }
-            }
-        ])
+    # 사용자 입력
+    user_input = input("\n문장을 입력하세요:\n")
 
-        # Send request to Azure OpenAI model
-        print("Azure OpenAI로 요청 중...\n")
+    print("\nAzure Cognitive Search에서 문서 검색 중...\n")
+    # 1) Azure Cognitive Search 호출
+    search_results = search_azure_cognitive_search(
+        user_input, azure_search_endpoint, azure_search_key, azure_search_index
+    )
 
-        response = client.chat.completions.create(
-            model = azure_oai_deployment,
-            temperature = 0.5,
-            max_tokens = 1000,
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text}
-            ]
-        )
+    # 검색 결과에서 content 필드 추출 (인덱스 설계에 따라 필드명 다를 수 있음)
+    documents = [doc.get("content", "") for doc in search_results.get("value", [])]
+    context_text = "\n\n".join(documents)
 
-        # Print response
-        print("교정 결과: " + response.choices[0].message.content + "\n")
+    # 2) Chat Completion 호출 시 검색 결과를 컨텍스트로 포함
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": f"참고 문서 내용:\n{context_text}"},
+        {"role": "user", "content": user_input}
+    ]
 
-        if (show_citations):
-            # Print citations
-            print("Citations:")
-            citations = response.choices[0].message.context["messages"][0]["content"]
-            citation_json = json.loads(citations)
-                
-        
-    except Exception as ex:
-        print(ex)
+    url = f"{azure_oai_endpoint}/openai/deployments/{azure_oai_deployment}/chat/completions?api-version=2024-02-15-preview"
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": azure_oai_key
+    }
+    body = {
+        "messages": messages,
+        "temperature": 0.5,
+        "max_tokens": 1000
+    }
 
+    print("\nAzure OpenAI에 요청 중...\n")
 
-if __name__ == '__main__': 
+    response = requests.post(url, headers=headers, json=body)
+
+    if response.status_code == 200:
+        result = response.json()
+        print("교정 결과:\n" + result["choices"][0]["message"]["content"] + "\n")
+    else:
+        print(f"\n오류 발생: {response.status_code} - {response.text}\n")
+
+if __name__ == "__main__":
     main()
