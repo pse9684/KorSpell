@@ -67,7 +67,7 @@ def main():
     response = requests.post(url, headers=headers, json=body)
 
     if response.status_code == 200:
-        result = response.json()
+        result = response.json() # 반환된 결과값
         print("교정 결과:\n" + result["choices"][0]["message"]["content"] + "\n")
     else:
         print(f"\n오류 발생: {response.status_code} - {response.text}\n")
