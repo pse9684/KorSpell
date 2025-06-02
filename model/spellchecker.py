@@ -42,8 +42,8 @@ def main():
         user_input, azure_search_endpoint, azure_search_key, azure_search_index
     )
 
-    # 검색 결과에서 content 필드 추출 (인덱스 설계에 따라 필드명 다를 수 있음)
-    documents = [doc.get("content", "") for doc in search_results.get("value", [])]
+    # 검색 결과에서 필드 추출
+    documents = [doc.get("input_text", "") for doc in search_results.get("corrected_text", [])]
     context_text = "\n\n".join(documents)
 
     # 2) Chat Completion 호출 시 검색 결과를 컨텍스트로 포함
